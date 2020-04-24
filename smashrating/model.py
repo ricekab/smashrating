@@ -95,9 +95,43 @@ class Tournament(Base):
 
 class Player(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
-    sgg_id = Column(Integer, nullable=True, index=True)  # TODO: Anon have ID?
+    sgg_id = Column(Integer, nullable=True, index=True)
     name = Column(String, nullable=False)
     country = Column(String, nullable=True)
+
+    won_sets = relationship('Set',
+                            foreign_keys="Set.winning_player_id",
+                            back_populates="winning_player")
+
+    lost_sets = relationship('Set',
+                             foreign_keys="Set.losing_player_id",
+                             back_populates="losing_player")
+
+    @property
+    def sets(self):
+        """
+        Retrieves both winning and losing sets.
+
+        Note that this collection is read-only! Additions to this collection
+        will not be persisted (unless of course it has the necessary references
+        already).
+        """
+        return self.won_sets + self.lost_sets
+
+    @property
+    def is_anonymous(self):
+        """
+        If the user has no external IDs at all.
+
+        Since there is no way to be sure, a lot of duplicate names may exist
+        under different anonymous user (1 per tournament). This does NOT mean
+        they don't have an account, but merely the tournament the results are
+        from did not have him/her as a verified attendee.
+
+        Unfortunately, because of the large data set there are bound to many
+        name clashes that we cannot resolve automatically.
+        """
+        return not any([self.sgg_id])  # Add challonge, etc if we add them later
 
 
 class Set(Base):
@@ -122,11 +156,13 @@ class Set(Base):
     tournament = relationship("Tournament", back_populates="sets")
 
     winning_player_id = Column(Integer, ForeignKey('player.id'), nullable=False)
-    winning_player = relationship("Player", foreign_keys=[winning_player_id])
+    winning_player = relationship("Player", foreign_keys=[winning_player_id],
+                                  back_populates="won_sets")
     winning_score = Column(Integer, nullable=False)
 
     losing_player_id = Column(Integer, ForeignKey('player.id'), nullable=False)
-    losing_player = relationship("Player", foreign_keys=[losing_player_id])
+    losing_player = relationship("Player", foreign_keys=[losing_player_id],
+                                 back_populates="lost_sets")
     losing_score = Column(Integer, nullable=False)
 
     # If one or more participants are not verified for the tournament, the sets
