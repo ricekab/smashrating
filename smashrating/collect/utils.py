@@ -1,13 +1,9 @@
-def merge_players(session, canonical_player, duplicate_players,
-                  auto_commit=False):
+def merge_players(canonical_player, duplicate_players):
     """
     Merges any references to duplicate players to the canonical player.
 
-    The duplicate players are removed from the session at the end of this
-    operation but does NOT commit the session unless auto_commit is True.
-
-    :param session:
-    :type session: sqlalchemy.orm.Session
+    This does NOT remove the duplicate player entries nor does it explicitly
+    modify the session.
 
     :param canonical_player:
     :type canonical_player: smashrating.model.Player
@@ -15,19 +11,12 @@ def merge_players(session, canonical_player, duplicate_players,
     :param duplicate_players:
     :type duplicate_players: list[smashrating.model.Player]
 
-    :param auto_commit: Whether to commit at the end of the operation.
-        Default: False.
-    :type auto_commit: bool
-
     :return:
     """
     if canonical_player in duplicate_players:
         duplicate_players.remove(canonical_player)
     for duplicate in duplicate_players:
         _transfer_relations(canonical_player, duplicate)
-        session.delete(duplicate)
-    if auto_commit:
-        session.commit()
 
 
 def _transfer_relations(target, source):
