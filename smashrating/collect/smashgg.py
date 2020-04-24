@@ -317,32 +317,52 @@ class SmashGGScraper(object):
         :rtype: list[Set]
         """
         sets = list()
-        players = {p.sgg_id: p for p in self.session.query(Player).all()}
+        players = self.session.query(Player).all()
+        p_sgg_map = {p.sgg_id: p for p in players}
+        anon_name_map = dict()
         for idx, sd in enumerate(set_dicts):
             winner, loser = sorted(sd['slots'],
                                    key=lambda s: s['standing']['placement'])
-            w_data = _extract_player_data(winner)
             w_score = winner['standing']['stats']['score']['value']
-            l_data = _extract_player_data(loser)
             l_score = loser['standing']['stats']['score']['value']
             if l_score < 0:  # Negative score is a DQ
                 _logger.debug(f"Skipping set {sd['id']}. Reason: DQ .")
                 continue
-            if w_data['sgg_id'] not in players:
-                players[w_data['sgg_id']] = Player(sgg_id=w_data['sgg_id'],
-                                                   name=w_data['name'],
-                                                   country=w_data['country'])
-            player_w = players[w_data['sgg_id']]
-            if l_data['sgg_id'] not in players:
-                players[l_data['sgg_id']] = Player(sgg_id=l_data['sgg_id'],
-                                                   name=l_data['name'],
-                                                   country=l_data['country'])
-            player_l = players[l_data['sgg_id']]
+            w_data = _extract_player_data(winner)
+            l_data = _extract_player_data(loser)
+            # W player
+            if w_data["sgg_id"]:
+                if w_data['sgg_id'] not in p_sgg_map:
+                    p_sgg_map[w_data['sgg_id']] = Player(sgg_id=w_data['sgg_id'],
+                                                         name=w_data['name'],
+                                                         country=w_data['country'])
+                w_player = p_sgg_map[w_data['sgg_id']]
+            else:
+                if w_data['name'] not in anon_name_map:
+                    anon_name_map[w_data['name']] = Player(sgg_id=w_data['sgg_id'],  # None
+                                                           name=w_data['name'],
+                                                           country=w_data['country'])
+                w_player = anon_name_map[w_data['name']]
+            # L player
+            if l_data["sgg_id"]:
+                if l_data['sgg_id'] not in p_sgg_map:
+                    p_sgg_map[l_data['sgg_id']] = Player(
+                        sgg_id=l_data['sgg_id'],
+                        name=l_data['name'],
+                        country=l_data['country'])
+                l_player = p_sgg_map[l_data['sgg_id']]
+            else:
+                if l_data['name'] not in anon_name_map:
+                    anon_name_map[l_data['name']] = Player(
+                        sgg_id=l_data['sgg_id'],  # None
+                        name=l_data['name'],
+                        country=l_data['country'])
+                l_player = anon_name_map[l_data['name']]
             set_ = Set(order=idx,
                        tournament=tournament,
-                       winning_player=player_w,
+                       winning_player=w_player,
                        winning_score=w_score,
-                       losing_player=player_l,
+                       losing_player=l_player,
                        losing_score=l_score,
                        verified=w_data['verified'] and l_data['verified'])
             sets.append(set_)
