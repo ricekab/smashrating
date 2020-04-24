@@ -18,11 +18,18 @@ def get_engine(db_user=None, db_pass=None, db_url=None, db_schema=None,
     }
     conn_str = "{db_connector}://{db_user}:{db_pass}@{db_url}/{db_schema}" \
         .format(**db_kwargs)
-    _logger.debug("Creating engine with: '{}'".format(conn_str))
+    _logger.debug(f"Creating engine with: '{conn_str}'")
     return create_engine(conn_str)
 
 
 def get_session(**engine_kwargs):
+    """
+
+    :param engine_kwargs:
+
+    :return:
+    :rtype: sqlalchemy.orm.Session
+    """
     engine = get_engine(**engine_kwargs)
     _session_factory = sessionmaker(bind=engine)
     return _session_factory()
