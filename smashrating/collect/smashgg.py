@@ -6,6 +6,8 @@ import logging
 import time
 from datetime import datetime
 from pprint import pprint as pp
+from urllib.error import HTTPError
+
 from smashrating.model import Tournament, Player, Set
 from graphqlclient import GraphQLClient
 from smashrating.collect import smashgg_queries as queries
@@ -75,100 +77,96 @@ class SmashGGScraper(object):
         self._req_idx = 0  # type: int
         self.object_limit = object_limit
 
-    def submit_request(self, query, params):
-        # Ensure we wait out any delay (1.0 extra second leeway)
-        elapsed_time = time.time() - self._req_times[self._req_idx]
-        if elapsed_time < 60.0:
-            _logger.debug(f"Sleeping {60.0 - elapsed_time}")
-            time.sleep(61.0 - elapsed_time)  # Extra second for inaccuracies
-        self._req_times[self._req_idx] = time.time()
-        self._req_idx = (self._req_idx + 1) % len(self._req_times)
-        # TODO: Better as a try-catch --> May run multiple instances of scrapers
-        # |-> Exponential back-off would resolve bottlenecks more gracefully.
+    def submit_request(self, query, params=None):
+        """
+
+
+        :param query: The graphQL query in string format.
+        :type query: str
+
+        :param params: Parameters for the request. If not provided, an empty
+            dict is given.
+        :type params: dict
+
+        :return: The response data in dictionary format (parsed by json). The
+            response metadata is NOT returned.
+        :rtype: dict
+        """
+        params = params or dict()
         _logger.debug(f'> Executing query (page {params.get("page", 1)})')
-        result = self._client.execute(query=query, variables=params)  # str
+        result = self._execute_request(query, params)  # str
         result = json.loads(result)
         # Ignore metadata and just return the requested data.
         try:
             return result["data"]
         except KeyError:
-            # TODO: Error handling here
-            from pprint import pprint
-            pprint(result)
+            # TODO: Error handling here (no data?)
             raise NotImplementedError("Handle error here")
 
-    def _extract_tournaments(self, tournament_dicts):
+    def _execute_request(self, query, params=None, max_retries=5,
+                         max_wait_time=60.0):
         """
-        Convert given tournament data dicts into Tournament instances.
+        Executes the graphQL request with exponential back-off.
 
-        :param tournament_dicts:
-        :type tournament_dicts: collections.Iterable[dict]
+        :param query: The graphQL query in string format.
+        :type query: str
 
-        :return:
-        :rtype: list[Tournament]
+        :param params: Parameters for the request. If not provided, an empty
+            dict is given.
+        :type params: dict
+
+        :param max_retries: Maximum number of times to retry. Default: 5 .
+        :type max_retries: int
+
+        :param max_wait_time: Maximum amount of time, in seconds) to wait.
+            Default: 60.0 .
+        :type max_wait_time: int or float
+
+        :return: The response string.
+        :rtype: str
         """
-        tournaments = list()
-        for td in tournament_dicts:
-            for evt in filter(filter_event, td['events']):
-                t = Tournament(sgg_id=td['id'],
-                               sgg_event_id=evt['id'],
-                               name=f"{td['name']} - {evt['name']}",
-                               country=td['countryCode'],
-                               end_date=datetime.utcfromtimestamp(td['endAt']),
-                               num_entrants=evt['numEntrants'])
-                tournaments.append(t)
-        self._merge_tournaments(tournaments)
-        return tournaments
+        wait_time = 2.5
+        for try_idx in range(1, max_retries):
+            try:
+                return self._client.execute(query=query,
+                                            variables=params or dict())
+            except HTTPError as http_err:
+                if http_err.code != 429:  # Too Many Requests
+                    raise http_err
+                # Note: 400 (bad request) can be given to indicate too high
+                # complexity for a request.
+                if try_idx == max_retries - 1:  # Exhausted retries
+                    raise http_err
+                wait_time *= 2.0
+                _logger.info(f"Too many requests (429). Waiting {wait_time:.1f}"
+                             f" seconds before resuming.")
+                time.sleep(min(wait_time, max_wait_time))
+                continue
 
-    def _merge_tournaments(self, new_tournaments):
-        """
-        Merges the given tournaments into the database.
-
-        New entries are added as-is. If an external ID match is found, the data
-        is merged (updated) on the existing entry.
-
-        :param new_tournaments:
-        :type new_tournaments: list[Tournament]
-        """
-        tournaments = self.session.query(Tournament).all()
-        id_map = {(t.sgg_id, t.sgg_event_id,): t.id for t in tournaments}
-        for new_t in new_tournaments:
-            # Use existing id if a match is found, otherwise let db generate it.
-            id_match = id_map.get((new_t.sgg_id, new_t.sgg_event_id,))
-            if id_match:
-                _logger.debug(f"Existing Tournament found, merging entry "
-                              f"(id={id_match}).")
-                new_t.id = id_match
-                self.session.merge(new_t)
-            else:
-                _logger.debug(f"Adding new Tournament: {new_t}'.")
-                self.session.add(new_t)
-        self.session.commit()
-
-    def _merge_players(self, new_players):
-        """
-        Merges the given players into the database.
-
-        New entries are added as-is. If an external ID match is found, the data
-        is merged (updated) on the existing entry.
-
-        :param new_players:
-        :type new_players: collections.Iterable[Player]
-        """
-        players = self.session.query(Player).all()
-        id_map = {p.sgg_id: p.id for p in players}
-        for new_p in new_players:
-            # Use existing id if a match is found, otherwise let db generate it.
-            id_match = id_map.get(new_p.sgg_id)
-            if id_match:
-                _logger.debug(f"Existing Player found, merging entry "
-                              f"(id={id_match}).")
-                new_p.id = id_match
-                self.session.merge(new_p)
-            else:
-                _logger.debug(f"Adding new Player: {new_p}'.")
-                self.session.add(new_p)
-        self.session.commit()
+    # def _merge_players(self, new_players):
+    #     """
+    #     Merges the given players into the database.
+    #
+    #     New entries are added as-is. If an external ID match is found, the data
+    #     is merged (updated) on the existing entry.
+    #
+    #     :param new_players:
+    #     :type new_players: collections.Iterable[Player]
+    #     """
+    #     players = self.session.query(Player).all()
+    #     id_map = {p.sgg_id: p.id for p in players}
+    #     for new_p in new_players:
+    #         # Use existing id if a match is found, otherwise let db generate it.
+    #         id_match = id_map.get(new_p.sgg_id)
+    #         if id_match:
+    #             _logger.debug(f"Existing Player found, merging entry "
+    #                           f"(id={id_match}).")
+    #             new_p.id = id_match
+    #             self.session.merge(new_p)
+    #         else:
+    #             _logger.debug(f"Adding new Player: {new_p}'.")
+    #             self.session.add(new_p)
+    #     self.session.commit()
 
     def get_all_tournaments(self, after_date=1):
         """
@@ -258,18 +256,97 @@ class SmashGGScraper(object):
         """
         raise NotImplementedError()
 
-    def populate_empty_tournaments(self):
+    def _extract_tournaments(self, tournament_dicts):
         """
-        Populates all empty (valid) tournaments.
+        Convert given tournament data dicts into Tournament instances.
+
+        :param tournament_dicts:
+        :type tournament_dicts: collections.Iterable[dict]
 
         :return:
+        :rtype: list[Tournament]
         """
-        valid_tournaments = self.session.query(Tournament) \
-            .filter_by(is_valid=True) \
-            .all()
-        empty_tournaments = [t for t in valid_tournaments if not t.is_populated]
-        pp(empty_tournaments)
-        raise NotImplementedError()
+        tournaments = list()
+        for td in tournament_dicts:
+            for evt in filter(filter_event, td['events']):
+                t = Tournament(sgg_id=td['id'],
+                               sgg_event_id=evt['id'],
+                               name=f"{td['name']} - {evt['name']}",
+                               country=td['countryCode'],
+                               end_date=datetime.utcfromtimestamp(td['endAt']),
+                               num_entrants=evt['numEntrants'])
+                tournaments.append(t)
+        self._merge_tournaments(tournaments)
+        return tournaments
+
+    def _merge_tournaments(self, new_tournaments):
+        """
+        Merges the given tournaments into the database.
+
+        New entries are added as-is. If an external ID match is found, the data
+        is merged (updated) on the existing entry.
+
+        :param new_tournaments:
+        :type new_tournaments: list[Tournament]
+        """
+        tournaments = self.session.query(Tournament).all()
+        id_map = {(t.sgg_id, t.sgg_event_id,): t.id for t in tournaments}
+        for new_t in new_tournaments:
+            # Use existing id if a match is found, otherwise let db generate it.
+            id_match = id_map.get((new_t.sgg_id, new_t.sgg_event_id,))
+            if id_match:
+                _logger.debug(f"Existing Tournament found, merging entry "
+                              f"(id={id_match}).")
+                new_t.id = id_match
+                self.session.merge(new_t)
+            else:
+                _logger.debug(f"Adding new Tournament: {new_t}'.")
+                self.session.add(new_t)
+        self.session.commit()
+
+    def _extract_sets(self, set_dicts, tournament):
+        """
+
+        :param set_dicts:
+        :type set_dicts: list[dict]
+
+        :param tournament:
+        :type tournament: Tournament
+
+        :return:
+        :rtype: list[Set]
+        """
+        sets = list()
+        players = {p.sgg_id: p for p in self.session.query(Player).all()}
+        for idx, sd in enumerate(set_dicts):
+            winner, loser = sorted(sd['slots'],
+                                   key=lambda s: s['standing']['placement'])
+            w_data = _extract_player_data(winner)
+            w_score = winner['standing']['stats']['score']['value']
+            l_data = _extract_player_data(loser)
+            l_score = loser['standing']['stats']['score']['value']
+            if l_score < 0:  # Negative score is a DQ
+                _logger.debug(f"Skipping set {sd['id']}. Reason: DQ .")
+                continue
+            if w_data['sgg_id'] not in players:
+                players[w_data['sgg_id']] = Player(sgg_id=w_data['sgg_id'],
+                                                   name=w_data['name'],
+                                                   country=w_data['country'])
+            player_w = players[w_data['sgg_id']]
+            if l_data['sgg_id'] not in players:
+                players[l_data['sgg_id']] = Player(sgg_id=l_data['sgg_id'],
+                                                   name=l_data['name'],
+                                                   country=l_data['country'])
+            player_l = players[l_data['sgg_id']]
+            set_ = Set(order=idx,
+                       tournament=tournament,
+                       winning_player=player_w,
+                       winning_score=w_score,
+                       losing_player=player_l,
+                       losing_score=l_score,
+                       verified=w_data['verified'] and l_data['verified'])
+            sets.append(set_)
+        return sets
 
     def populate_tournament(self, tournament):
         """
@@ -280,8 +357,11 @@ class SmashGGScraper(object):
         :return:
         """
         if tournament.is_populated and tournament.is_valid:
+            _logger.debug(f"Skipping tournament '{tournament.name}' "
+                          f"({tournament.id}). It has already been processed "
+                          f"or has not been flagged as valid.")
             return
-        objects_per_page = 48
+        objects_per_page = 40
         paging = self.submit_request(
             query=queries.EVENT_SETS_PAGING,
             params=dict(eventId=tournament.sgg_event_id,
@@ -296,44 +376,32 @@ class SmashGGScraper(object):
             set_dicts.extend(result['event']['sets']['nodes'])
         set_dicts = list(sorted(filter(lambda sd_: sd_['startedAt'], set_dicts),
                                 key=lambda sd_: sd_['startedAt']))
-        sets = list()
-        players = dict()
-        pp(set_dicts)
-        for idx, sd in enumerate(set_dicts):
-            winner, loser = sorted(sd['slots'],
-                                   key=lambda s: s['standing']['placement'])
-            winner_sgg_id = winner['entrant']['participants'][0]['user']['id']
-            winner_name = winner['entrant']['participants'][0]['gamerTag']
-            winner_verified = winner['entrant']['participants'][0]['verified']
-            winner_score = winner['standing']['stats']['score']['value']
-            loser_sgg_id = loser['entrant']['participants'][0]['user']['id']
-            loser_name = loser['entrant']['participants'][0]['gamerTag']
-            loser_verified = loser['entrant']['participants'][0]['verified']
-            loser_score = loser['standing']['stats']['score']['value']
-            if loser_score < 0:  # Negative score is a DQ
-                print("SHOULD NEVER HAPPEN NOW")
-                continue
-            if winner_sgg_id not in players:
-                players[winner_sgg_id] = Player(sgg_id=winner_sgg_id,
-                                                name=winner_name)
-            if loser_sgg_id not in players:
-                players[loser_sgg_id] = Player(sgg_id=loser_sgg_id,
-                                               name=loser_name)
-            player_w = players[winner_sgg_id]
-            player_l = players[loser_sgg_id]
-            set_ = Set(order=idx,
-                       tournament=tournament,
-                       winning_player=player_w,
-                       winning_score=winner_score,
-                       losing_player=player_l,
-                       losing_score=loser_score,
-                       verified=winner_verified and loser_verified)
-            sets.append(set_)
-        self._merge_players(players.values())
-        self.session.add_all(sets)
+        sets = self._extract_sets(set_dicts, tournament)
+        self.session.add_all(sets)  # Not required due to link with tournament
         self.session.commit()
 
-    # TODO: Continue here
-    # - Parse set data
-    # - Add / merge player instances
-    # - Add set instances
+    def populate_empty_tournaments(self):
+        """
+        Populates all empty (valid) tournaments.
+
+        :return:
+        """
+        valid_tournaments = self.session.query(Tournament) \
+            .filter_by(is_valid=True) \
+            .all()
+        empty_tournaments = [t for t in valid_tournaments if not t.is_populated]
+        for tournament in empty_tournaments:
+            self.populate_tournament(tournament)
+
+
+def _extract_player_data(player_dict):
+    participant = player_dict['entrant']['participants'][0]
+    user = participant['user']
+    sgg_id = user['id'] if user else None
+    name = participant['gamerTag']
+    verified = participant['verified']
+    country = user['location']['country'] if user and user['location'] else None
+    return dict(sgg_id=sgg_id,
+                name=name,
+                verified=verified,
+                country=country)
