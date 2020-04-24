@@ -97,6 +97,7 @@ class Player(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     sgg_id = Column(Integer, nullable=True, index=True)  # TODO: Anon have ID?
     name = Column(String, nullable=False)
+    country = Column(String, nullable=True)
 
 
 class Set(Base):

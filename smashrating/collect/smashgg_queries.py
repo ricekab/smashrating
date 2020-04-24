@@ -149,6 +149,9 @@ query EventSets($eventId: ID!, $page: Int!, $perPage: Int!) {
               gamerTag
               user {
                 id
+                location {
+                  country
+                }
               }
               verified
             }
