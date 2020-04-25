@@ -20,13 +20,26 @@ SSBU_GAME_ID = 1386  # Videogame ID for SSBU
 EVENT_TYPE_SINGLES = 1  # Event type ID for 1v1
 
 
-def filter_event(event_dict):
+def _filter_event(event_dict):
     return event_dict['isOnline'] is False \
            and event_dict['numEntrants'] \
            and event_dict['numEntrants'] > 30 \
            and event_dict['videogame']['id'] == SSBU_GAME_ID \
            and event_dict['type'] == EVENT_TYPE_SINGLES \
            and event_dict['state'] == 'COMPLETED'
+
+
+_VALID_BRACKET_TYPES = ('SINGLE_ELIMINATION',
+                        'DOUBLE_ELIMINATION',
+                        'ROUND_ROBIN',
+                        'SWISS',
+                        )
+
+
+# TODO: Include matchmaking events / phases?
+
+def _filter_phase(phase):
+    return phase['bracketType'] in _VALID_BRACKET_TYPES
 
 
 def filter_tournament_dict(tournament_dict):
@@ -45,7 +58,7 @@ def filter_tournament_dict(tournament_dict):
         otherwise.
     :rtype: bool
     """
-    valid_events = list(filter(filter_event, tournament_dict['events']))
+    valid_events = list(filter(_filter_event, tournament_dict['events']))
     return len(valid_events) > 0
 
 
@@ -268,7 +281,7 @@ class SmashGGScraper(object):
         """
         tournaments = list()
         for td in tournament_dicts:
-            for evt in filter(filter_event, td['events']):
+            for evt in filter(_filter_event, td['events']):
                 t = Tournament(sgg_id=td['id'],
                                sgg_event_id=evt['id'],
                                name=f"{td['name']} - {evt['name']}",
@@ -333,15 +346,17 @@ class SmashGGScraper(object):
             # W player
             if w_data["sgg_id"]:
                 if w_data['sgg_id'] not in p_sgg_map:
-                    p_sgg_map[w_data['sgg_id']] = Player(sgg_id=w_data['sgg_id'],
-                                                         name=w_data['name'],
-                                                         country=w_data['country'])
+                    p_sgg_map[w_data['sgg_id']] = Player(
+                        sgg_id=w_data['sgg_id'],
+                        name=w_data['name'],
+                        country=w_data['country'])
                 w_player = p_sgg_map[w_data['sgg_id']]
             else:
                 if w_data['name'] not in anon_name_map:
-                    anon_name_map[w_data['name']] = Player(sgg_id=w_data['sgg_id'],  # None
-                                                           name=w_data['name'],
-                                                           country=w_data['country'])
+                    anon_name_map[w_data['name']] = Player(
+                        sgg_id=w_data['sgg_id'],  # None
+                        name=w_data['name'],
+                        country=w_data['country'])
                 w_player = anon_name_map[w_data['name']]
             # L player
             if l_data["sgg_id"]:
@@ -368,6 +383,19 @@ class SmashGGScraper(object):
             sets.append(set_)
         return sets
 
+    def populate_empty_tournaments(self):
+        """
+        Populates all empty (valid) tournaments.
+
+        :return:
+        """
+        valid_tournaments = self.session.query(Tournament) \
+            .filter_by(is_valid=True) \
+            .all()
+        empty_tournaments = [t for t in valid_tournaments if not t.is_populated]
+        for tournament in empty_tournaments:
+            self.populate_tournament(tournament)
+
     def populate_tournament(self, tournament):
         """
 
@@ -381,37 +409,55 @@ class SmashGGScraper(object):
                           f"({tournament.id}). It has already been processed "
                           f"or has not been flagged as valid.")
             return
+        phases = self.submit_request(
+            query=queries.EVENT_PHASES,
+            params=dict(eventId=tournament.sgg_event_id))['event']['phases']
+        for idx, ph in enumerate(phases):
+            if idx == 0:
+                continue
+            prev_ph = phases[idx - 1]
+            if ph['numSeeds'] >= prev_ph['numSeeds']:
+                _logger.warning(
+                    f'Phase "{ph["name"]}" contains more players than the '
+                    f'preceding phase "{prev_ph["name"]}". This could be a '
+                    f'matchmaking bracket after the main bracket?')
+        for phase in (_ph for _ph in phases if _filter_phase(_ph)):
+            self._extract_phase_sets(tournament, phase)
+
+    def _extract_phase_sets(self, tournament, phase):
+        """
+
+        :param tournament:
+        :type tournament: smashrating.model.Tournament
+
+        :param phase:
+        :type phase: dict
+
+        :return:
+        :rtype: list[Set]
+        """
         objects_per_page = 40
         paging = self.submit_request(
-            query=queries.EVENT_SETS_PAGING,
-            params=dict(eventId=tournament.sgg_event_id,
-                        perPage=objects_per_page))['event']['sets']['pageInfo']
+            query=queries.PHASE_SETS_PAGING,
+            params=dict(phaseId=phase['id'],
+                        perPage=objects_per_page))['phase']['sets']['pageInfo']
         set_dicts = list()
-        for page in range(1, paging['totalPages'] + 1):
+        # Sets are in reverse order, so we go from last to first page and
+        # last to first set on each page.
+        for page in range(paging['totalPages'], 0, -1):
             result = self.submit_request(
-                query=queries.EVENT_SETS,
-                params=dict(eventId=tournament.sgg_event_id,
+                query=queries.PHASE_SETS,
+                params=dict(phaseId=phase['id'],
                             page=page,
                             perPage=objects_per_page))
-            set_dicts.extend(result['event']['sets']['nodes'])
-        set_dicts = list(sorted(filter(lambda sd_: sd_['startedAt'], set_dicts),
-                                key=lambda sd_: sd_['startedAt']))
+            # Sets are in reverse call order.
+            set_dicts.extend(reversed(result['phase']['sets']['nodes']))
+        # Note: StartedAt is not reliable, it's null for random sets.
+        # set_dicts = list(sorted(filter(lambda sd_: sd_['startedAt'], set_dicts),
+        #                         key=lambda sd_: sd_['startedAt']))
         sets = self._extract_sets(set_dicts, tournament)
         self.session.add_all(sets)  # Not required due to link with tournament
         self.session.commit()
-
-    def populate_empty_tournaments(self):
-        """
-        Populates all empty (valid) tournaments.
-
-        :return:
-        """
-        valid_tournaments = self.session.query(Tournament) \
-            .filter_by(is_valid=True) \
-            .all()
-        empty_tournaments = [t for t in valid_tournaments if not t.is_populated]
-        for tournament in empty_tournaments:
-            self.populate_tournament(tournament)
 
 
 def _extract_player_data(player_dict):
