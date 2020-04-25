@@ -29,6 +29,6 @@ def _transfer_relations(target, source):
     :type source: smashrating.model.Player
     """
     for ws in source.won_sets:
-        ws.winning_player = target
+        ws.winning_player_id = target.id
     for ls in source.lost_sets:
-        ls.losing_player = target
+        ls.losing_player_id = target.id
