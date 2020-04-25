@@ -22,7 +22,8 @@ query TournamentsByCountryPaging($countryCode: String!, $afterDate: Timestamp!, 
 """.strip()
 
 TOURNAMENTS_BY_COUNTRY = """
-query TournamentsByCountry($countryCode: String!, $afterDate: Timestamp!, $page: Int!, $perPage: Int!) {
+query TournamentsByCountry($countryCode: String!, $afterDate: Timestamp!,
+                           $page: Int!, $perPage: Int!) {
   tournaments(query: {
     page: $page
     perPage: $perPage
@@ -56,7 +57,8 @@ query TournamentsByCountry($countryCode: String!, $afterDate: Timestamp!, $page:
 """.strip()
 
 TOURNAMENTS_ALL_PAGING = """
-query TournamentsPaging($afterDate: Timestamp!, $perPage: Int!) {
+query TournamentsPaging($afterDate: Timestamp!, $beforeDate: Timestamp!, 
+                        $perPage: Int!) {
   tournaments(query: {
     perPage: $perPage
     filter: {
@@ -64,6 +66,7 @@ query TournamentsPaging($afterDate: Timestamp!, $perPage: Int!) {
       upcoming: false
       hasOnlineEvents: false
       afterDate: $afterDate
+      beforeDate: $beforeDate
     }
   }) {
     pageInfo {
@@ -75,7 +78,8 @@ query TournamentsPaging($afterDate: Timestamp!, $perPage: Int!) {
 """.strip()
 
 TOURNAMENTS_ALL = """
-query TournamentsAll($afterDate: Timestamp!, $page: Int!, $perPage: Int!) {
+query TournamentsAll($afterDate: Timestamp!, $beforeDate: Timestamp!, 
+                     $page: Int!, $perPage: Int!) {
   tournaments(query: {
     page: $page
     perPage: $perPage
@@ -84,7 +88,9 @@ query TournamentsAll($afterDate: Timestamp!, $page: Int!, $perPage: Int!) {
       upcoming: false
       hasOnlineEvents: false
       afterDate: $afterDate
-    }
+      beforeDate: $beforeDate
+    },
+    sort: startAt
   }) {
     nodes {
       id

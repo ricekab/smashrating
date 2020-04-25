@@ -29,14 +29,13 @@ def _filter_event(event_dict):
            and event_dict['state'] == 'COMPLETED'
 
 
+# TODO: Include matchmaking events / phases?
 _VALID_BRACKET_TYPES = ('SINGLE_ELIMINATION',
                         'DOUBLE_ELIMINATION',
                         'ROUND_ROBIN',
                         'SWISS',
                         )
 
-
-# TODO: Include matchmaking events / phases?
 
 def _filter_phase(phase):
     return phase['bracketType'] in _VALID_BRACKET_TYPES
@@ -113,6 +112,7 @@ class SmashGGScraper(object):
         try:
             return result["data"]
         except KeyError:
+            pp(result)
             # TODO: Error handling here (no data?)
             raise NotImplementedError("Handle error here")
 
@@ -181,7 +181,7 @@ class SmashGGScraper(object):
     #             self.session.add(new_p)
     #     self.session.commit()
 
-    def get_all_tournaments(self, after_date=1):
+    def get_all_tournaments(self, after_date=1, before_date=None):
         """
         TODO: DOC
 
@@ -193,27 +193,36 @@ class SmashGGScraper(object):
             queries all tournaments.
         :type after_date: int or float
 
+        :param before_date: Filter tournaments before the given UNIX timestamp.
+            If not provided. The current datetime is used.
+        :type before_date: int or float
+
         :return:
         """
-        s_time = time.time()
+        before_date = before_date or datetime.utcnow().timestamp()
+        st = time.time()
         objects_per_page = 50
         paging = self.submit_request(
             query=queries.TOURNAMENTS_ALL_PAGING,
             params=dict(afterDate=after_date,
+                        beforeDate=before_date,
                         perPage=objects_per_page))['tournaments']['pageInfo']
         tournament_dicts = list()
-        _logger.debug(f'Querying for {paging["totalPages"]} pages.')
+        _logger.info(f'Querying tournaments for {paging["totalPages"]} pages.')
         for page in range(1, paging['totalPages'] + 1):
             result = self.submit_request(
                 query=queries.TOURNAMENTS_ALL,
                 params=dict(afterDate=after_date,
+                            beforeDate=before_date,
                             page=page,
                             perPage=objects_per_page))
-            # TODO: Sometimes nodes are empty?
             if result['tournaments']['nodes'] is None:
-                print(f"Page {page} is empty?")
+                raise IndexError(
+                    f'Empty page when data is expected. This may have hit a '
+                    f'SmashGG internal limitation where it cannot paginate '
+                    f'results beyond 10000 .')
             tournament_dicts.extend(result['tournaments']['nodes'] or list())
-        _logger.debug(f'Queries took {time.time() - s_time} seconds.')
+        _logger.debug(f'Tournament retrieval took {time.time() - st} seconds.')
         tournaments = self._extract_tournaments(tournament_dicts)
         return tournaments
 
@@ -279,17 +288,25 @@ class SmashGGScraper(object):
         :return:
         :rtype: list[Tournament]
         """
-        tournaments = list()
+        tournaments = dict()  # type: dict[tuple, Tournament]
         for td in tournament_dicts:
+            if not td['events']:
+                _logger.warning(f'Skipping tournaments "{td["name"]}", it does '
+                                f'not have any events.')
+                continue
             for evt in filter(_filter_event, td['events']):
+                if tournaments.get((td['id'], evt['id'],)):
+                    _logger.warning(
+                        f'Duplicate tournament detected, skipping entry: '
+                        f'({td["name"]} - {evt["name"]}.')
                 t = Tournament(sgg_id=td['id'],
                                sgg_event_id=evt['id'],
                                name=f"{td['name']} - {evt['name']}",
                                country=td['countryCode'],
                                end_date=datetime.utcfromtimestamp(td['endAt']),
                                num_entrants=evt['numEntrants'])
-                tournaments.append(t)
-        self._merge_tournaments(tournaments)
+                tournaments[(td['id'], evt['id'],)] = t
+        self._merge_tournaments(list(tournaments.values()))
         return tournaments
 
     def _merge_tournaments(self, new_tournaments):
@@ -405,7 +422,7 @@ class SmashGGScraper(object):
         :return:
         """
         if tournament.is_populated and tournament.is_valid:
-            _logger.debug(f"Skipping tournament '{tournament.name}' "
+            _logger.info(f"Skipping tournament '{tournament.name}' "
                           f"({tournament.id}). It has already been processed "
                           f"or has not been flagged as valid.")
             return
