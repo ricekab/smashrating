@@ -353,8 +353,9 @@ class SmashGGScraper(object):
         for idx, sd in enumerate(set_dicts):
             winner, loser = sorted(sd['slots'],
                                    key=lambda s: s['standing']['placement'])
-            w_score = winner['standing']['stats']['score']['value']
-            l_score = loser['standing']['stats']['score']['value']
+            # Score can be None if no scores are given (just win/loss)
+            w_score = winner['standing']['stats']['score']['value'] or 0
+            l_score = loser['standing']['stats']['score']['value'] or 0
             if l_score < 0:  # Negative score is a DQ
                 _logger.debug(f"Skipping set {sd['id']}. Reason: DQ .")
                 continue
@@ -410,6 +411,7 @@ class SmashGGScraper(object):
             .filter_by(is_valid=True) \
             .all()
         empty_tournaments = [t for t in valid_tournaments if not t.is_populated]
+        _logger.info(f'Populating {len(empty_tournaments)} tournaments.')
         for tournament in empty_tournaments:
             self.populate_tournament(tournament)
 
