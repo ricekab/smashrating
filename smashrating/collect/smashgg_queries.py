@@ -107,62 +107,6 @@ query TournamentsAll($afterDate: Timestamp!, $page: Int!, $perPage: Int!) {
 }
 """.strip()
 
-# EVENT_SETS_PAGING = """
-# query EventSets($eventId: ID!, $perPage: Int!) {
-#   event(id: $eventId) {
-#     id
-#     name
-#     sets(
-#       perPage: $perPage
-#       sortType: CALL_ORDER
-#     ) {
-#       pageInfo {
-#         totalPages
-#       }
-#     }
-#   }
-# }
-# """.strip()
-#
-# EVENT_SETS = """
-# query EventSets($eventId: ID!, $page: Int!, $perPage: Int!) {
-#   event(id: $eventId) {
-#     sets(
-#       page: $page
-#       perPage: $perPage
-#       sortType: CALL_ORDER
-#     ) {
-#       nodes {
-#         id
-#         startedAt
-#         slots {
-#           standing {
-#             placement
-#             stats {
-#               score {
-#                 value
-#               }
-#             }
-#           }
-#           entrant {
-#             participants {
-#               gamerTag
-#               user {
-#                 id
-#                 location {
-#                   country
-#                 }
-#               }
-#               verified
-#             }
-#           }
-#         }
-#       }
-#     }
-#   }
-# }
-# """.strip()
-
 EVENT_PHASES = """
 query EventPhases($eventId: ID!) {
   event(id: $eventId) {
