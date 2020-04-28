@@ -371,8 +371,10 @@ class SmashGGScraper(object):
                 continue
             w_data = _extract_player_data(winner)
             l_data = _extract_player_data(loser)
+            w_is_anon = w_data["sgg_id"] is None
+            l_is_anon = l_data["sgg_id"] is None
             # W player
-            if w_data["sgg_id"]:
+            if not w_is_anon:
                 if w_data['sgg_id'] not in p_sgg_map:
                     p_sgg_map[w_data['sgg_id']] = Player(
                         sgg_id=w_data['sgg_id'],
@@ -387,7 +389,7 @@ class SmashGGScraper(object):
                         country=w_data['country'])
                 w_player = anon_name_map[w_data['name']]
             # L player
-            if l_data["sgg_id"]:
+            if not l_is_anon:
                 if l_data['sgg_id'] not in p_sgg_map:
                     p_sgg_map[l_data['sgg_id']] = Player(
                         sgg_id=l_data['sgg_id'],
@@ -401,13 +403,19 @@ class SmashGGScraper(object):
                         name=l_data['name'],
                         country=l_data['country'])
                 l_player = anon_name_map[l_data['name']]
+            if w_data['verified'] and l_data['verified']:
+                set_state = Set.VERIFIED
+            elif not w_is_anon and not l_is_anon:
+                set_state = Set.UNVERIFIED
+            else:
+                set_state = Set.ANONYMOUS
             set_ = Set(order=idx,
                        tournament=tournament,
                        winning_player=w_player,
                        winning_score=w_score,
                        losing_player=l_player,
                        losing_score=l_score,
-                       verified=w_data['verified'] and l_data['verified'])
+                       state=set_state)
             sets.append(set_)
         return sets
 

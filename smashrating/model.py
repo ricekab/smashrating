@@ -165,9 +165,19 @@ class Set(Base):
                                  back_populates="lost_sets")
     losing_score = Column(Integer, nullable=False)
 
-    # If one or more participants are not verified for the tournament, the sets
-    # must manually be flagged as valid.
-    verified = Column(Boolean, nullable=False)
+    # State of the set. These are the following expected values:
+    # 1 - VERIFIED: Both players in the set are verified participants.
+    # -1 - UNVERIFIED: One or more participant is unverified, but both are
+    #                 linked to proper accounts.
+    # -2 - ANONYMOUS: One or more players is not linked to an account. These
+    #                  are manual entries by TOs and cannot automatically be
+    #                  linked to a player.
+    state = Column(Integer, nullable=False)
+
+    # State "static" values
+    VERIFIED = 1
+    UNVERIFIED = -1
+    ANONYMOUS = -2
 
 
 class Ranking(Base):
