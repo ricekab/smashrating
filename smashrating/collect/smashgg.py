@@ -23,7 +23,7 @@ EVENT_TYPE_SINGLES = 1  # Event type ID for 1v1
 def _filter_event(event_dict):
     return event_dict['isOnline'] is False \
            and event_dict['numEntrants'] \
-           and event_dict['numEntrants'] > 30 \
+           and event_dict['numEntrants'] >= 30 \
            and event_dict['videogame']['id'] == SSBU_GAME_ID \
            and event_dict['type'] == EVENT_TYPE_SINGLES \
            and event_dict['state'] == 'COMPLETED'
@@ -351,8 +351,13 @@ class SmashGGScraper(object):
         p_sgg_map = {p.sgg_id: p for p in players}
         anon_name_map = dict()
         for idx, sd in enumerate(set_dicts):
-            winner, loser = sorted(sd['slots'],
-                                   key=lambda s: s['standing']['placement'])
+            try:
+                winner, loser = sorted(sd['slots'],
+                                       key=lambda s: s['standing']['placement'])
+            except TypeError:
+                _logger.error(f'Set is missing data? Cannot resolve. Skipping '
+                              f'this set ({sd["id"]}).')
+                continue
             # Score can be None if no scores are given (just win/loss)
             w_score = winner['standing']['stats']['score']['value'] or 0
             l_score = loser['standing']['stats']['score']['value'] or 0
