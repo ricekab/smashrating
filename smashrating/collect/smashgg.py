@@ -354,6 +354,11 @@ class SmashGGScraper(object):
             try:
                 winner, loser = sorted(sd['slots'],
                                        key=lambda s: s['standing']['placement'])
+            except ValueError:
+                _logger.error(f'Set does not contain 2 participants. This '
+                              f'seems to only occur in Swiss / RR phases? '
+                              f'Skipping this set ({sd["id"]}).')
+                continue
             except TypeError:
                 _logger.error(f'Set is missing data? Cannot resolve. Skipping '
                               f'this set ({sd["id"]}).')
@@ -444,7 +449,8 @@ class SmashGGScraper(object):
                 _logger.warning(
                     f'Phase "{ph["name"]}" contains more players than the '
                     f'preceding phase "{prev_ph["name"]}". This could be a '
-                    f'matchmaking bracket after the main bracket?')
+                    f'matchmaking phase after the main bracket? '
+                    f'(Tournament: {tournament})')
         for phase in (_ph for _ph in phases if _filter_phase(_ph)):
             self._extract_phase_sets(tournament, phase)
 
