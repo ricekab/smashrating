@@ -1,3 +1,6 @@
+""" Elo ranking algorithm. """
+
+
 def update_ranking(w_rank, l_rank, w_k, l_k):
     """
     Calculates the update ranking for 2 players.
