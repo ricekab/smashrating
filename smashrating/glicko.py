@@ -5,7 +5,7 @@ Implementation is done based on the paper found here:
 
 http://www.glicko.net/glicko/glicko.pdf
 
-Note that this IS Glicko-2, which adds a volatility factor (sigma).
+Note that this IS NOT Glicko-2, which adds a volatility factor (sigma).
 """
 import math
 from collections import defaultdict
