@@ -13,4 +13,5 @@ engine = get_engine(db_user='vagrant',
                     db_url='localhost:5432',
                     db_schema='vagrant')
 
+# Base.metadata.drop_all(engine)
 Base.metadata.create_all(engine)
