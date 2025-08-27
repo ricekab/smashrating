@@ -1,0 +1,23 @@
+---
+title: Smashrating Architecture
+---
+flowchart TD
+    StartGG[("StartGG Data")]
+    Postgres[("Postgres Data")]
+    subgraph Collection
+        GetTournaments -- "for each tournament" --> PopulateTournament 
+        --> GetTournamentSets --> GetPlayers
+        UpdatePlayerNames
+    end
+    subgraph Processing
+        CreateRatingSystem
+        UpdateRatingPeriodTournaments -->
+        ValidateTournaments -->
+        UpdatePlayerRatings
+    end
+    subgraph Utilities
+        MergePlayers
+    end
+    Collection -- Reads --> StartGG
+    Collection -- Populates --> Postgres
+    Processing -- Uses --> Postgres

@@ -1,0 +1,63 @@
+erDiagram
+    TOURNAMENT {
+        int id PK
+        int sgg_id
+        int sgg_event_id
+        string name
+        string country_code
+        int num_entrants
+        date end_date
+        string status
+        bool is_completed
+        bool is_valid "Ranking eligible"
+    }
+    SET {
+        int id PK
+        int sgg_id
+        int tournament_id FK
+        int winning_player_id FK
+        int winning_score
+        int losing_player_id FK
+        int losing_score
+        int status "Verified"
+    }
+    PLAYER {
+        int id PK
+        int sgg_id
+        string display_name
+        string country_code
+        json aliases
+    }
+    RATING_SYSTEM {
+        int id PK
+        float base_rating
+        float base_rd
+        float minimum_rd
+        float c_value "Deviation factor"
+        int min_tournaments "Min No. of Ts to close a period."
+        int max_tournaments "Max No. of Ts to close a period."
+        int month_interval "Month intervals"
+        json tournament_criteria "Tournament filters"
+    }
+    RATING_PERIOD {
+        int id PK
+        date start_date
+        date end_date
+        bool is_complete
+    }
+    PLAYER_RATING {
+        int id PK
+        int player_id FK
+        float rating
+        float deviation
+    }
+
+
+    TOURNAMENT ||--o{ SET : sets
+    SET }o--|| PLAYER : winner
+    SET }o--|| PLAYER : loser
+    RATING_PERIOD }o--|| RATING_SYSTEM: for
+    RATING_PERIOD }o--|| PLAYER_RATING: for
+    RATING_PERIOD }o--|{ TOURNAMENT: used
+    PLAYER_RATING }o--|| PLAYER: represents
+    RATING_PERIOD o|--|| RATING_PERIOD: "previous period"

@@ -1,0 +1,103 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "smashrating"
+dynamic = ["version"]
+description = "Tournament data collection and player rating for Smash Ultimate."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Kevin Chi Yan Tang", email = "contact@kevinchiyantang.com" },
+]
+dependencies = [
+    "graphqlclient>=0.2.4,<2",
+    "requests>=2,<3",
+    "sqlalchemy>=2",
+    "alembic>=1,<2",
+    "pydantic-settings>=2,<3",
+]
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build<2",
+    "ruff<2",
+    "mypy<2",
+    "pytest>=8,<9",
+    "psycopg[binary]>=3,<4",
+    "coverage>=7,<8",
+]
+# TODO: Add types environment for mypy compat?
+# eg. types-psycopg, etc
+prod = ["psycopg[c]>=3,<4"]
+
+[project.urls]
+Homepage = "https://github.com/ricekab/smashrating"
+
+# hatch and hatch-vcs
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["smashrating"]
+
+[tool.hatch.envs.default]
+features = ["dev"] # use dev optional deps defined above
+
+[tool.hatch.envs.default.scripts]
+format-check = "ruff format --check smashrating/ tests/"
+lint = "ruff check smashrating/ tests/"
+lint-type = "mypy smashrating/"
+check = ["format-check", "lint", "lint-type"]            # Check all
+format = "ruff format smashrating/ tests/"
+lint-fix = "ruff check --fix smashrating/ tests/"
+fix = ["format", "lint-fix"]                             # Fix all
+test = "pytest tests/"
+test-cov = "coverage run -m pytest tests/"
+test-report = "coverage report --show-missing"
+cov-report = ["test-report"]
+cov = ["test-cov", "test-report"]                        # Run test with coverage
+cov-clean = ["coverage erase"]
+
+# ruff
+[tool.ruff]
+exclude = ["alembic", "venv"]
+
+# TODO: add additional ruff linting rules
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "ANN",
+    "S101",    # Allow usage of "assert"
+    "S105",    # Allow hardcoded password assignment
+    "S106",    # Allow hardcoded password argument
+    "S311",    # Allow (cryptographic) unsafe random generators
+    "PLR2004", # Allow magic numbers
+]
+
+# mypy
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+python_version = "3.10"
+
+# pytest and coverage
+[tool.pytest.ini_options]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["smashrating/", "tests/"]
+
+[tool.coverage.report]
+exclude_lines = ["no cov", "if __name__ == .__main__.:", "if TYPE_CHECKING:"]

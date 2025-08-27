@@ -1,6 +1,6 @@
-*.vagrant
-.idea
 config.json
+_version.py
+.idea
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

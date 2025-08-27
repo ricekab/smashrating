@@ -14,7 +14,7 @@ from smashrating.collect import smashgg_queries as queries
 
 _logger = logging.getLogger(__name__)
 
-API_ENDPOINT = "https://api.smash.gg/gql/alpha"
+API_ENDPOINT = "https://api.start.gg/gql/alpha"
 # Constants used to filter relevant data
 SSBU_GAME_ID = 1386  # Videogame ID for SSBU
 EVENT_TYPE_SINGLES = 1  # Event type ID for 1v1

@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: on-failure
+    environment:
+      - POSTGRES_USER=ratingdbo
+      - POSTGRES_PASSWORD=ratingdbopw
+      - POSTGRES_DB=ratingdb
+    ports:
+      - 54329:5432
+    volumes:
+      - postgres-vol:/var/lib/postgresql/data
+
+volumes:
+  postgres-vol:
